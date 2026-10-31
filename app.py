@@ -71,13 +71,18 @@ def sample_img(forged):
              "Clause 4.3 Records shall be retained for three years"]
     for i, t in enumerate(lines): d.text((60, 100 + i * 58), t, fill=(30, 30, 30), font=F)
     for y in range(580, 610, 12): d.text((60, y), "This certificate is issued under the Food Safety and Standards Act", fill=(120, 120, 120), font=FS)
+    import qrcode
+    q = qrcode.QRCode(box_size=4, border=2); q.add_data("DOCIMMUNE|LIC:FSS/TN/2026/0457|AAD4:2346|NAME:Priya Raman"); q.make(fit=True)
+    im.paste(q.make_image(fill_color="black", back_color="white").convert("RGB").resize((150, 150)), (720, 440))
+    d.ellipse((720, 30, 840, 150), outline=(180, 30, 40), width=6); d.ellipse((732, 42, 828, 138), outline=(180, 30, 40), width=2)
+    d.text((748, 78), "FSSAI", fill=(180, 30, 40), font=F)
     arr = np.asarray(im).astype(int) + rng.integers(-6, 7, (620, 900, 3))
     im = Image.fromarray(arr.clip(0, 255).astype("uint8"))
     b = io.BytesIO(); im.save(b, "JPEG", quality=90); b.seek(0); im = Image.open(b).convert("RGB")
     if forged:  # edited after the original was saved: Aadhaar digits and clause 4.2 pasted over
         d = ImageDraw.Draw(im)
         for y, t in ((158, "Aadhaar: 2341 2341 2347"), (448, "Clause 4.2 Licence may be renewed at any time")):
-            d.rectangle((55, y - 4, 800, y + 30), fill=(250, 248, 240)); d.text((60, y), t, fill=(30, 30, 30), font=F)
+            d.rectangle((55, y - 4, 690, y + 30), fill=(250, 248, 240)); d.text((60, y), t, fill=(30, 30, 30), font=F)
     return im
 
 @st.cache_data(show_spinner=False)
@@ -125,13 +130,18 @@ def checks_for(r):
     extra = []
     if r.get("ocr_checked"):
         extra.append((r["details_match"], "Form matches the document", "Aadhaar and PAN read from the document match the form." if r["details_match"] else "Aadhaar or PAN printed on the document differs from the form."))
+    qr = r.get("qr")
+    if qr and qr["status"] != "absent":
+        extra.append((qr["status"] == "match", "QR code matches the document", qr["text"]))
+    if r.get("seal") is not None and r.get("aadhaar") is not None:
+        extra.append((r["seal"], "Official seal found", "A round official seal was detected." if r["seal"] else "No official seal found on the document."))
     m = r.get("memory", {})
     if m:
         extra.append((m.get("status") in ("new", "resubmission"), "Not a copied or reused document", m.get("text", "")))
     return [(r["aadhaar"], "Aadhaar number", "Passes the official checksum rule." if r["aadhaar"] else "Fails the checksum. Likely a typing error or a made-up number."),
             (r["pan"], "PAN format", "Format is valid." if r["pan"] else "Wrong format. It should look like ABCDE1234F."),
             (r["name_match"] >= .9, "Name matches the form", f"Form and document match {int(r['name_match']*100)}%."),
-            (r["tamper_score"] < 6, "Image not edited", "No edited area found." if r["tamper_score"] < 6 else "An area of the image looks edited."),
+            (r["tamper_score"] < 5, "Image not edited", "No edited area found." if r["tamper_score"] < 5 else "An area of the image looks edited."),
             (not r["missing_or_mutated"], "Rules and clauses", "All regulation clauses found." if not r["missing_or_mutated"] else "Missing or changed: " + ", ".join(r["missing_or_mutated"]) + ".")] + extra
 
 
@@ -260,7 +270,7 @@ def page_verify():
             res.update(id=cid, who=S["nm"], doc=S["doc"], time=NOW(), sample=False, decision="Pending", images=(img, heatmap(img)), family=fam)
             res["log"] = [(res["time"], "Case created and document received"), (res["time"], f"AI verification: {res['verdict']} (risk {int(res['risk']*100)}/100)")]
             if fam: res["log"].append((res["time"], f"Remembered as forgery family {fam}"))
-            res["issues"] = [n for n, bad in [("Aadhaar", not res["aadhaar"]), ("PAN", not res["pan"]), ("Name", res["name_match"] < .9), ("Edited image", res["tamper_score"] >= 6), ("Clauses", bool(res["missing_or_mutated"]))] if bad]
+            res["issues"] = [n for n, bad in [("Aadhaar", not res["aadhaar"]), ("PAN", not res["pan"]), ("Name", res["name_match"] < .9), ("Edited image", res["tamper_score"] >= 5), ("Clauses", bool(res["missing_or_mutated"]))] if bad]
             ss.queue.insert(0, res); ss.result = res; ss.step = 3; st.rerun()
     else:
         report(ss.result, "v")
@@ -297,6 +307,8 @@ def page_help():
         st.write("The image is re-saved as JPEG and compared with the original. Edited areas compress differently and show up bright on the edit map.")
     with st.expander("How are Aadhaar, PAN and rules checked?"):
         st.write("Aadhaar uses the Verhoeff checksum, PAN uses its official format, and rules are matched to the regulation text with Smith-Waterman alignment, an algorithm from gene sequence analysis. Aadhaar is not checked against the government database.")
+    with st.expander("What do the QR and seal checks do?"):
+        st.write("A genuine licence carries a QR code with its key details. DocImmune reads it and compares it with the printed text and the form. If someone edits the printed number but not the QR, the mismatch is flagged. It also looks for a round official seal.")
     with st.expander("What does the document memory do?"):
         st.write("Every checked document is remembered by a visual fingerprint. DocImmune can then spot a document reused for another applicant, an edited copy of an approved document, and repeated forgeries from the same family. Memory lasts for your current session.")
     with st.expander("How is the text read from the document?"):
