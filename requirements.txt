@@ -3,3 +3,5 @@ pillow>=10.1
 numpy
 biopython
 pytesseract
+opencv-python-headless
+qrcode[pil]
