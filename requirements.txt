@@ -1,4 +1,5 @@
-streamlit
-pillow
+streamlit>=1.46
+pillow>=10.1
 numpy
 biopython
+pytesseract
