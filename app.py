@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import streamlit as st
 from PIL import Image, ImageChops, ImageDraw, ImageFont
-from docimmune_proto import verify, REG_DEFAULT
+from docimmune_proto import verify, REG_DEFAULT, Memory, ocr_read, parse_fields
 
 st.set_page_config(page_title="DocImmune", page_icon="🛡️", layout="wide", initial_sidebar_state="collapsed")
 
@@ -63,16 +63,31 @@ VICON = {"PASS": "✓", "REVIEW": "!", "ESCALATE": "✕"}
 
 def sample_img(forged):
     rng = np.random.default_rng(1)
-    im = Image.new("RGB", (800, 500), (250, 248, 240)); d = ImageDraw.Draw(im); f = ImageFont.load_default()
-    for y in range(40, 460, 28):
-        d.text((60, y), "CERTIFICATE OF REGISTRATION   LICENCE NO. FSS/TN/2026/0457   VALID UPTO 2029", fill=(30, 30, 30), font=f)
-    arr = np.asarray(im).astype(int) + rng.integers(-6, 7, (500, 800, 3))
+    F = ImageFont.load_default(size=20); FB = ImageFont.load_default(size=28); FS = ImageFont.load_default(size=11)
+    im = Image.new("RGB", (900, 620), (250, 248, 240)); d = ImageDraw.Draw(im)
+    d.text((60, 30), "FOOD SAFETY LICENCE", fill=(20, 40, 90), font=FB)
+    lines = ["Name: Priya Raman", "Aadhaar: 2341 2341 2346", "PAN: ABCDE1234F", "Licence No: FSS/TN/2026/0457", "Valid upto: 2029",
+             "Clause 4.1 The applicant shall hold a valid licence", "Clause 4.2 Licence shall be renewed every five years",
+             "Clause 4.3 Records shall be retained for three years"]
+    for i, t in enumerate(lines): d.text((60, 100 + i * 58), t, fill=(30, 30, 30), font=F)
+    for y in range(580, 610, 12): d.text((60, y), "This certificate is issued under the Food Safety and Standards Act", fill=(120, 120, 120), font=FS)
+    arr = np.asarray(im).astype(int) + rng.integers(-6, 7, (620, 900, 3))
     im = Image.fromarray(arr.clip(0, 255).astype("uint8"))
     b = io.BytesIO(); im.save(b, "JPEG", quality=90); b.seek(0); im = Image.open(b).convert("RGB")
-    if forged:
-        d = ImageDraw.Draw(im); d.rectangle((300, 200, 520, 222), fill=(250, 248, 240))
-        d.text((305, 206), "LICENCE NO. FSS/TN/2031/9999", fill=(20, 20, 20), font=f)
+    if forged:  # edited after the original was saved: Aadhaar digits and clause 4.2 pasted over
+        d = ImageDraw.Draw(im)
+        for y, t in ((158, "Aadhaar: 2341 2341 2347"), (448, "Clause 4.2 Licence may be renewed at any time")):
+            d.rectangle((55, y - 4, 800, y + 30), fill=(250, 248, 240)); d.text((60, y), t, fill=(30, 30, 30), font=F)
     return im
+
+@st.cache_data(show_spinner=False)
+def read_doc(png_bytes):
+    """OCR once per image. Returns (available, parsed fields)."""
+    txt = ocr_read(Image.open(io.BytesIO(png_bytes)))
+    return (txt is not None), parse_fields(txt)
+
+def img_bytes(img):
+    b = io.BytesIO(); img.save(b, "PNG"); return b.getvalue()
 
 def heatmap(img):
     b = io.BytesIO(); img.convert("RGB").save(b, "JPEG", quality=90); b.seek(0)
@@ -103,15 +118,22 @@ def seed():
             mk(2, "Anita Sharma", "Identity + address proof", "REVIEW", .31, ["Name"], 190), mk(1, "Rahul Menon", "Scholarship certificate", "PASS", .05, [], 400)]
 
 ss = st.session_state
-ss.setdefault("queue", seed()); ss.setdefault("step", 1); ss.setdefault("result", None); ss.setdefault("open", None)
+ss.setdefault("mem", Memory()); ss.setdefault("queue", seed()); ss.setdefault("step", 1); ss.setdefault("result", None); ss.setdefault("open", None)
 ss.setdefault("S", dict(nm="", nd="", ad="", pn="", doc=DOC_TYPES[0], src="Genuine sample"))
 
 def checks_for(r):
+    extra = []
+    if r.get("ocr_checked"):
+        extra.append((r["details_match"], "Form matches the document", "Aadhaar and PAN read from the document match the form." if r["details_match"] else "Aadhaar or PAN printed on the document differs from the form."))
+    m = r.get("memory", {})
+    if m:
+        extra.append((m.get("status") in ("new", "resubmission"), "Not a copied or reused document", m.get("text", "")))
     return [(r["aadhaar"], "Aadhaar number", "Passes the official checksum rule." if r["aadhaar"] else "Fails the checksum. Likely a typing error or a made-up number."),
             (r["pan"], "PAN format", "Format is valid." if r["pan"] else "Wrong format. It should look like ABCDE1234F."),
             (r["name_match"] >= .9, "Name matches the form", f"Form and document match {int(r['name_match']*100)}%."),
             (r["tamper_score"] < 6, "Image not edited", "No edited area found." if r["tamper_score"] < 6 else "An area of the image looks edited."),
-            (not r["missing_or_mutated"], "Rules and clauses", "All regulation clauses found." if not r["missing_or_mutated"] else "Missing or changed: " + ", ".join(r["missing_or_mutated"]) + ".")]
+            (not r["missing_or_mutated"], "Rules and clauses", "All regulation clauses found." if not r["missing_or_mutated"] else "Missing or changed: " + ", ".join(r["missing_or_mutated"]) + ".")] + extra
+
 
 def pill(v): return f'<span class="pill p-{v}">{v}</span>'
 
@@ -124,6 +146,7 @@ def report_html(r):
 
 def decide(r, d):
     r["decision"] = d
+    r.setdefault("log", []).append((NOW(), f"Officer decision: {d}"))
 
 def report(r, key):
     a, b = st.columns([1, 1.5], gap="large")
@@ -149,6 +172,10 @@ def report(r, key):
         with st.expander("See the image scan"):
             c1, c2 = st.columns(2)
             c1.image(r["images"][0], caption="Document", width="stretch"); c2.image(r["images"][1], caption="Edit map: bright = edited", width="stretch")
+    if r.get("log"):
+        with st.expander("Activity log"):
+            for t, ev in r["log"]:
+                st.write(f"`{t:%d %b %H:%M:%S}`  {ev}")
     st.caption("The AI only flags. The officer always makes the final decision.")
 
 # =========================================================== PAGES
@@ -207,19 +234,32 @@ def page_verify():
         img = None
         if src == "Upload my own":
             up = l.file_uploader("Drop a photo or scan here (PNG / JPG)", type=["png", "jpg", "jpeg"])
-            img = Image.open(up).convert("RGB") if up else None; default = GOOD
+            img = Image.open(up).convert("RGB") if up else None
         else:
-            img = sample_img(src == "Forged sample"); default = BAD if src == "Forged sample" else GOOD
+            img = sample_img(src == "Forged sample")
+        ocr_ok, fields = (False, {}) if img is None else read_doc(img_bytes(img))
         if img is not None: l.image(img, caption="Preview", width="stretch")
+        default = "\n".join(fields.get("clauses", [])) if ocr_ok and fields.get("clauses") else (BAD if src == "Forged sample" else GOOD)
         cl = r.text_area("Rules found on the document (one per line)", default, height=170, key=f"w_cl_{src}")
+        if img is not None:
+            with r.expander("Text read from the document (OCR)", expanded=ocr_ok):
+                if ocr_ok:
+                    st.write(f"**Aadhaar:** {fields.get('aadhaar') or 'not found'}  \n**PAN:** {fields.get('pan') or 'not found'}  \n**Name:** {fields.get('name') or 'not found'}")
+                    st.caption("Clauses were read automatically. You can correct them above.")
+                else:
+                    st.caption("The OCR engine is not available here, so type or paste the clauses above.")
         r.markdown('<div class="tip">Compared with: licence held · renewed every 5 years · records kept 3 years.</div>', unsafe_allow_html=True)
         b1, b2, _ = st.columns([1, 1.5, 3])
         b1.button("Back", icon=":material/arrow_back:", on_click=lambda: ss.update(step=1))
         if b2.button("Run verification", type="primary", icon=":material/search:", disabled=img is None):
             S["src"] = src
             with st.spinner("Scanning document…"):
-                res = verify(dict(name=S["nm"], name_on_doc=S["nd"], aadhaar=S["ad"], pan=S["pn"].strip().upper()), img, [c for c in cl.split("\n") if c.strip()], REG_DEFAULT)
-            res.update(id=f"A-{10481 + len([x for x in ss.queue if not x['sample']])}", who=S["nm"], doc=S["doc"], time=NOW(), sample=False, decision="Pending", images=(img, heatmap(img)))
+                res = verify(dict(name=S["nm"], name_on_doc=S["nd"], aadhaar=S["ad"], pan=S["pn"].strip().upper()), img, [c for c in cl.split("\n") if c.strip()], REG_DEFAULT, memory=ss.mem, ocr=fields if ocr_ok else None)
+            cid = f"A-{10481 + len([x for x in ss.queue if not x['sample']])}"
+            fam = ss.mem.add(res["hash"], res["key"], cid, res["verdict"], res["memory"], res["tamper_score"])
+            res.update(id=cid, who=S["nm"], doc=S["doc"], time=NOW(), sample=False, decision="Pending", images=(img, heatmap(img)), family=fam)
+            res["log"] = [(res["time"], "Case created and document received"), (res["time"], f"AI verification: {res['verdict']} (risk {int(res['risk']*100)}/100)")]
+            if fam: res["log"].append((res["time"], f"Remembered as forgery family {fam}"))
             res["issues"] = [n for n, bad in [("Aadhaar", not res["aadhaar"]), ("PAN", not res["pan"]), ("Name", res["name_match"] < .9), ("Edited image", res["tamper_score"] >= 6), ("Clauses", bool(res["missing_or_mutated"]))] if bad]
             ss.queue.insert(0, res); ss.result = res; ss.step = 3; st.rerun()
     else:
@@ -257,6 +297,10 @@ def page_help():
         st.write("The image is re-saved as JPEG and compared with the original. Edited areas compress differently and show up bright on the edit map.")
     with st.expander("How are Aadhaar, PAN and rules checked?"):
         st.write("Aadhaar uses the Verhoeff checksum, PAN uses its official format, and rules are matched to the regulation text with Smith-Waterman alignment, an algorithm from gene sequence analysis. Aadhaar is not checked against the government database.")
+    with st.expander("What does the document memory do?"):
+        st.write("Every checked document is remembered by a visual fingerprint. DocImmune can then spot a document reused for another applicant, an edited copy of an approved document, and repeated forgeries from the same family. Memory lasts for your current session.")
+    with st.expander("How is the text read from the document?"):
+        st.write("OCR reads the Aadhaar, PAN and clauses from the image, and they are compared with the form. If OCR is not available, the clauses can be typed.")
     with st.expander("Is the data real?"):
         st.write("Cases marked *sample* and the built-in documents are synthetic. This is a working prototype, not a production system.")
     st.caption("DocImmune · prototype built by Team ZYMORA for Smart India Hackathon 2026")
