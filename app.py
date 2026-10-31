@@ -5,45 +5,49 @@ import streamlit as st
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 from docimmune_proto import verify, REG_DEFAULT
 
-st.set_page_config(page_title="DocImmune", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="DocImmune", page_icon="🛡️", layout="wide", initial_sidebar_state="collapsed")
 
 # =========================================================== STYLE
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-html, body, .stApp, h1, h2, h3, h4, p, label, li, button, input, textarea, [data-testid="stMarkdownContainer"]{font-family:'Plus Jakarta Sans',sans-serif}
-#MainMenu, footer, header [data-testid="stToolbar"]{visibility:hidden}
-.block-container{padding:4rem 2.6rem 3rem;max-width:1180px}
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+html, body, .stApp, h1, h2, h3, h4, p, label, li, button, input, textarea, [data-testid="stMarkdownContainer"]{font-family:'Manrope',sans-serif}
+footer{visibility:hidden}
+[data-testid="stSidebar"],[data-testid="stSidebarCollapsedControl"],[data-testid="stExpandSidebarButton"]{display:none}
+.block-container{padding:4.2rem 2.6rem 3rem;max-width:1180px}
+@media(max-width:640px){.block-container{padding:4.2rem 1rem 3rem}.hero{padding:22px}.stp{flex-direction:column}}
 h1,h2,h3{letter-spacing:-.02em}
-.ph{margin-bottom:22px}.ph h1{font-size:1.9rem;font-weight:800;margin:0;color:#1B1F3B}.ph p{margin:4px 0 0;color:#6B7194}
-.card{background:#fff;border:1px solid #E7E9F2;border-radius:18px;padding:22px;box-shadow:0 2px 10px rgba(27,31,59,.04)}
-.card h4{margin:0 0 14px;font-size:1rem;font-weight:700;color:#1B1F3B}
-.kpi{display:flex;gap:14px;align-items:center;background:#fff;border:1px solid #E7E9F2;border-radius:18px;padding:18px;box-shadow:0 2px 10px rgba(27,31,59,.04)}
+.ph{margin-bottom:22px}.ph h1{font-size:1.9rem;font-weight:800;margin:0;color:#0B2A2E}.ph p{margin:4px 0 0;color:#587378}
+.card{background:#fff;border:1px solid #DCE9E8;border-radius:18px;padding:22px;box-shadow:0 2px 10px rgba(27,31,59,.04)}
+.card h4{margin:0 0 14px;font-size:1rem;font-weight:700;color:#0B2A2E}
+.kpi{display:flex;gap:14px;align-items:center;background:#fff;border:1px solid #DCE9E8;border-radius:18px;padding:18px;box-shadow:0 2px 10px rgba(27,31,59,.04)}
 .kpi .ic{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-size:1.3rem;flex:none}
-.kpi b{display:block;font-size:1.7rem;line-height:1.1;color:#1B1F3B}.kpi span{color:#6B7194;font-size:.85rem}
-.hero{background:linear-gradient(120deg,#5B4BFF 0%,#8A5CFF 55%,#00B8A9 130%);border-radius:22px;padding:30px 32px;color:#fff;margin-bottom:20px}
+.kpi b{display:block;font-size:1.7rem;line-height:1.1;color:#0B2A2E}.kpi span{color:#587378;font-size:.85rem}
+.hero{background:linear-gradient(120deg,#0B3C49 0%,#0F766E 65%,#14B8A6 130%);border-radius:22px;padding:30px 32px;color:#fff;margin-bottom:20px}
 .hero h1{margin:0;font-size:1.8rem;font-weight:800;color:#fff}.hero p{margin:6px 0 0;opacity:.92;max-width:620px}
-.row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #EEF0F7}.row:last-child{border:0}
-.av{width:38px;height:38px;border-radius:50%;background:#ECE9FF;color:#5B4BFF;display:grid;place-items:center;font-weight:700;flex:none}
-.row .n{font-weight:600;color:#1B1F3B}.row .m{font-size:.8rem;color:#6B7194}.row .r{margin-left:auto;text-align:right}
+.row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #E8F0F0}.row:last-child{border:0}
+.av{width:38px;height:38px;border-radius:50%;background:#DDF3F0;color:#0F766E;display:grid;place-items:center;font-weight:700;flex:none}
+.row .n{font-weight:600;color:#0B2A2E}.row .m{font-size:.8rem;color:#587378}.row .r{margin-left:auto;text-align:right}
 .pill{padding:3px 11px;border-radius:20px;font-weight:700;font-size:.75rem;display:inline-block}
-.p-PASS{background:#DDF6EA;color:#0E8F57}.p-REVIEW{background:#FFF0D1;color:#B26A00}.p-ESCALATE{background:#FFE1E4;color:#C62A3B}.p-NONE{background:#EEF0F7;color:#6B7194}
-.tag{font-size:.68rem;background:#EEF0F7;color:#6B7194;border-radius:6px;padding:1px 7px;margin-left:6px}
-.stp{display:flex;gap:10px;margin-bottom:22px}.stp div{flex:1;background:#fff;border:1px solid #E7E9F2;border-radius:14px;padding:12px 14px;color:#9AA0C0;font-weight:600;display:flex;gap:10px;align-items:center}
-.stp b{width:28px;height:28px;border-radius:50%;background:#EEF0F7;color:#6B7194;display:grid;place-items:center;flex:none;font-size:.85rem}
-.stp .on{border-color:#5B4BFF;color:#1B1F3B;box-shadow:0 4px 14px rgba(91,75,255,.15)}.stp .on b{background:#5B4BFF;color:#fff}
-.stp .done b{background:#12B76A;color:#fff}.stp .done{color:#1B1F3B}
-.tip{background:#F0EEFF;border-radius:12px;padding:12px 16px;color:#3B3294;margin:6px 0 16px;font-size:.92rem}
+.p-PASS{background:#DDF6EA;color:#0E8F57}.p-REVIEW{background:#FFF0D1;color:#B26A00}.p-ESCALATE{background:#FFE1E4;color:#C62A3B}.p-NONE{background:#E8F0F0;color:#587378}
+.tag{font-size:.68rem;background:#E8F0F0;color:#587378;border-radius:6px;padding:1px 7px;margin-left:6px}
+.stp{display:flex;gap:10px;margin-bottom:22px}.stp div{flex:1;background:#fff;border:1px solid #DCE9E8;border-radius:14px;padding:12px 14px;color:#8AA3A6;font-weight:600;display:flex;gap:10px;align-items:center}
+.stp b{width:28px;height:28px;border-radius:50%;background:#E8F0F0;color:#587378;display:grid;place-items:center;flex:none;font-size:.85rem}
+.stp .on{border-color:#0F766E;color:#0B2A2E;box-shadow:0 4px 14px rgba(15,118,110,.18)}.stp .on b{background:#0F766E;color:#fff}
+.stp .done b{background:#12B76A;color:#fff}.stp .done{color:#0B2A2E}
+.tip{background:#E6F6F4;border-radius:12px;padding:12px 16px;color:#0F5F58;margin:6px 0 16px;font-size:.92rem}
 .vc{border-radius:20px;padding:26px;color:#fff;text-align:center}
 .vc h2{margin:10px 0 2px;color:#fff;font-weight:800}.vc p{margin:0;opacity:.95}
 .v-PASS{background:linear-gradient(145deg,#0E9F6E,#34D399)}.v-REVIEW{background:linear-gradient(145deg,#D97706,#FBBF24)}.v-ESCALATE{background:linear-gradient(145deg,#C81E3A,#FB7185)}
-.ck{display:flex;gap:14px;align-items:flex-start;padding:13px 0;border-bottom:1px solid #EEF0F7}.ck:last-child{border:0}
+.ck{display:flex;gap:14px;align-items:flex-start;padding:13px 0;border-bottom:1px solid #E8F0F0}.ck:last-child{border:0}
 .ck .b{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;font-weight:800}
 .ok{background:#DDF6EA;color:#0E8F57}.bad{background:#FFE1E4;color:#C62A3B}
-.ck .t{font-weight:700;color:#1B1F3B}.ck .d{color:#6B7194;font-size:.88rem}
+.ck .t{font-weight:700;color:#0B2A2E}.ck .d{color:#587378;font-size:.88rem}
 div.stButton>button{border-radius:12px;font-weight:700;padding:.55rem 1.2rem}
-div.stButton>button[kind="primary"]{background:linear-gradient(120deg,#5B4BFF,#8A5CFF);border:0;color:#fff}
+div.stButton>button[kind="primary"]{background:#0F766E;border:0;color:#fff}
 [data-testid="stTextInput"] input,[data-testid="stTextArea"] textarea,[data-baseweb="select"]>div{border-radius:12px}
+.st-key-mobnav{display:none}
+@media(max-width:900px){.st-key-mobnav{display:block;margin-bottom:10px}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -74,6 +78,8 @@ def heatmap(img):
     b = io.BytesIO(); img.convert("RGB").save(b, "JPEG", quality=90); b.seek(0)
     diff = ImageChops.difference(img.convert("RGB"), Image.open(b)).convert("L")
     return Image.fromarray(np.clip(np.asarray(diff, float) * 25, 0, 255).astype("uint8"))
+
+SV = {'doc': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>', 'ok': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>', 'warn': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>', 'bad': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9z"/><path d="m15 9-6 6M9 9l6 6"/></svg>'}
 
 def head(title, sub):
     st.markdown(f'<div class="ph"><h1>{title}</h1><p>{sub}</p></div>', unsafe_allow_html=True)
@@ -134,13 +140,13 @@ def report(r, key):
     st.write("")
     st.markdown(f'**Officer decision:** {pill(r["decision"].upper()) if r["decision"] in ("PASS","REVIEW","ESCALATE") else r["decision"]}')
     d1, d2, d3, d4 = st.columns([1, 1, 1.3, 1.6])
-    d1.button("✅ Approve", key=f"ap{key}", on_click=decide, args=(r, "Approved"))
-    d2.button("⛔ Reject", key=f"rj{key}", on_click=decide, args=(r, "Rejected"))
-    d3.button("📨 Ask for more info", key=f"mi{key}", on_click=decide, args=(r, "More info requested"))
+    d1.button("Approve", icon=":material/check_circle:", key=f"ap{key}", on_click=decide, args=(r, "Approved"))
+    d2.button("Reject", icon=":material/block:", key=f"rj{key}", on_click=decide, args=(r, "Rejected"))
+    d3.button("Ask for more info", icon=":material/mail:", key=f"mi{key}", on_click=decide, args=(r, "More info requested"))
     if r.get("aadhaar") is not None:
-        d4.download_button("⬇ Download report", report_html(r), file_name=f"{r['id']}_report.html", mime="text/html", key=f"dl{key}")
+        d4.download_button("Download report", report_html(r), icon=":material/download:", file_name=f"{r['id']}_report.html", mime="text/html", key=f"dl{key}")
     if r.get("images"):
-        with st.expander("🔬 See the image scan"):
+        with st.expander("See the image scan"):
             c1, c2 = st.columns(2)
             c1.image(r["images"][0], caption="Document", width="stretch"); c2.image(r["images"][1], caption="Edit map: bright = edited", width="stretch")
     st.caption("The AI only flags. The officer always makes the final decision.")
@@ -149,13 +155,13 @@ def report(r, key):
 def page_dashboard():
     q = ss.queue; h = NOW().hour
     greet = "Good morning" if h < 12 else "Good afternoon" if h < 17 else "Good evening"
-    st.markdown(f'<div class="hero"><h1>{greet}, Officer 👋</h1><p>DocImmune checks IDs, certificates and licences, spots edits, and tells you what to do next.</p></div>', unsafe_allow_html=True)
-    a, b = st.columns([1.6, 4]); a.button("＋ New verification", type="primary", on_click=lambda: st.switch_page(P_VERIFY))
+    st.markdown(f'<div class="hero"><h1>{greet}, Officer</h1><p>DocImmune checks IDs, certificates and licences, spots edits, and tells you what to do next.</p></div>', unsafe_allow_html=True)
+    a, b = st.columns([1.6, 4]); a.button("New verification", type="primary", icon=":material/add:", on_click=lambda: st.switch_page(P_VERIFY))
     k = st.columns(4)
-    k[0].markdown(kpi("📄", "#ECE9FF", len(q), "Total checked"), unsafe_allow_html=True)
-    k[1].markdown(kpi("✅", "#DDF6EA", sum(x["verdict"] == "PASS" for x in q), "Looks genuine"), unsafe_allow_html=True)
-    k[2].markdown(kpi("⚠️", "#FFF0D1", sum(x["verdict"] == "REVIEW" for x in q), "Need review"), unsafe_allow_html=True)
-    k[3].markdown(kpi("🚨", "#FFE1E4", sum(x["verdict"] == "ESCALATE" for x in q), "High risk"), unsafe_allow_html=True)
+    k[0].markdown(kpi(SV["doc"], "#DDF3F0;color:#0F766E", len(q), "Total checked"), unsafe_allow_html=True)
+    k[1].markdown(kpi(SV["ok"], "#DDF6EA;color:#0E8F57", sum(x["verdict"] == "PASS" for x in q), "Looks genuine"), unsafe_allow_html=True)
+    k[2].markdown(kpi(SV["warn"], "#FFF0D1;color:#B26A00", sum(x["verdict"] == "REVIEW" for x in q), "Need review"), unsafe_allow_html=True)
+    k[3].markdown(kpi(SV["bad"], "#FFE1E4;color:#C62A3B", sum(x["verdict"] == "ESCALATE" for x in q), "High risk"), unsafe_allow_html=True)
     st.write("")
     l, r = st.columns([1.7, 1], gap="large")
     rows = "".join(f'<div class="row"><div class="av">{x["who"][0]}</div><div><div class="n">{html.escape(x["who"])}{"<span class=tag>sample</span>" if x["sample"] else ""}</div>'
@@ -163,7 +169,7 @@ def page_dashboard():
     l.markdown(f'<div class="card"><h4>Recent activity</h4>{rows}</div>', unsafe_allow_html=True)
     n = max(len(q), 1)
     bars = "".join(f'<div style="margin:12px 0"><div style="display:flex;justify-content:space-between;font-size:.85rem"><span>{v.title()}</span><b>{c}</b></div>'
-                   f'<div style="height:9px;background:#EEF0F7;border-radius:6px;overflow:hidden"><div style="width:{c/n*100}%;height:100%;background:{col}"></div></div></div>'
+                   f'<div style="height:9px;background:#E8F0F0;border-radius:6px;overflow:hidden"><div style="width:{c/n*100}%;height:100%;background:{col}"></div></div></div>'
                    for v, col in (("PASS", "#12B76A"), ("REVIEW", "#F59E0B"), ("ESCALATE", "#EF4455")) for c in [sum(x["verdict"] == v for x in q)])
     r.markdown(f'<div class="card"><h4>Risk overview</h4>{bars}<div class="tip" style="margin:16px 0 0">Tip: press <b>New verification</b> and try a sample document in under a minute.</div></div>', unsafe_allow_html=True)
 
@@ -181,7 +187,7 @@ def page_verify():
     if step == 1:
         st.markdown('<div class="tip">New here? Try a sample: it fills everything in for you.</div>', unsafe_allow_html=True)
         c1, c2, _ = st.columns([1, 1, 2.5])
-        c1.button("✨ Try genuine sample", on_click=fill_sample, args=("genuine",)); c2.button("🚨 Try forged sample", on_click=fill_sample, args=("forged",))
+        c1.button("Try genuine sample", icon=":material/task_alt:", on_click=fill_sample, args=("genuine",)); c2.button("Try forged sample", icon=":material/report:", on_click=fill_sample, args=("forged",))
         for k, f in (("w_nm", "nm"), ("w_nd", "nd"), ("w_ad", "ad"), ("w_pn", "pn")):
             ss.setdefault(k, S[f])
         a, b = st.columns(2)
@@ -191,7 +197,7 @@ def page_verify():
         pn = b.text_input("PAN", key="w_pn", placeholder="ABCDE1234F")
         doc = a.selectbox("Document type", DOC_TYPES, index=DOC_TYPES.index(S["doc"]), key="w_doc")
         ok = all(x.strip() for x in (nm, nd, ad, pn))
-        if st.button("Continue →", type="primary", disabled=not ok):
+        if st.button("Continue", type="primary", icon=":material/arrow_forward:", disabled=not ok):
             S.update(nm=nm, nd=nd, ad=ad, pn=pn, doc=doc); ss.step = 2; st.rerun()
         if not ok: st.caption("Fill in all four fields to continue.")
     elif step == 2:
@@ -208,8 +214,8 @@ def page_verify():
         cl = r.text_area("Rules found on the document (one per line)", default, height=170, key=f"w_cl_{src}")
         r.markdown('<div class="tip">Compared with: licence held · renewed every 5 years · records kept 3 years.</div>', unsafe_allow_html=True)
         b1, b2, _ = st.columns([1, 1.5, 3])
-        b1.button("← Back", on_click=lambda: ss.update(step=1))
-        if b2.button("🔍 Run verification", type="primary", disabled=img is None):
+        b1.button("Back", icon=":material/arrow_back:", on_click=lambda: ss.update(step=1))
+        if b2.button("Run verification", type="primary", icon=":material/search:", disabled=img is None):
             S["src"] = src
             with st.spinner("Scanning document…"):
                 res = verify(dict(name=S["nm"], name_on_doc=S["nd"], aadhaar=S["ad"], pan=S["pn"].strip().upper()), img, [c for c in cl.split("\n") if c.strip()], REG_DEFAULT)
@@ -219,8 +225,8 @@ def page_verify():
     else:
         report(ss.result, "v")
         n1, n2, _ = st.columns([1.3, 1.3, 2.5])
-        n1.button("＋ Verify another", type="primary", on_click=lambda: ss.update(step=1, result=None))
-        n2.button("🗂️ Open all cases", on_click=lambda: st.switch_page(P_CASES))
+        n1.button("Verify another", type="primary", icon=":material/add:", on_click=lambda: ss.update(step=1, result=None))
+        n2.button("Open all cases", icon=":material/folder_open:", on_click=lambda: st.switch_page(P_CASES))
 
 def page_cases():
     head("Cases", "Every document checked, with the officer's decision.")
@@ -255,10 +261,14 @@ def page_help():
         st.write("Cases marked *sample* and the built-in documents are synthetic. This is a working prototype, not a production system.")
     st.caption("DocImmune · prototype built by Team ZYMORA for Smart India Hackathon 2026")
 
-P_HOME = st.Page(page_dashboard, title="Dashboard", icon="📊", default=True, url_path="dashboard")
-P_VERIFY = st.Page(page_verify, title="New verification", icon="🔍", url_path="verify")
-P_CASES = st.Page(page_cases, title="Cases", icon="🗂️", url_path="cases")
-P_HELP = st.Page(page_help, title="Help", icon="💡", url_path="help")
-st.logo('<svg xmlns="http://www.w3.org/2000/svg" width="190" height="40" viewBox="0 0 190 40"><path d="M20 3 6 8v10c0 9 6 16 14 19 8-3 14-10 14-19V8z" fill="#9B8CFF"/><path d="M14 20l5 5 8-9" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><text x="44" y="27" font-family="Arial" font-weight="800" font-size="20" fill="#fff">DocImmune</text></svg>', size="large")
-pg = st.navigation([P_HOME, P_VERIFY, P_CASES, P_HELP])
+P_HOME = st.Page(page_dashboard, title="Dashboard", icon=":material/dashboard:", default=True, url_path="dashboard")
+P_VERIFY = st.Page(page_verify, title="New verification", icon=":material/verified_user:", url_path="verify")
+P_CASES = st.Page(page_cases, title="Cases", icon=":material/folder_open:", url_path="cases")
+P_HELP = st.Page(page_help, title="Help", icon=":material/help:", url_path="help")
+st.logo('<svg xmlns="http://www.w3.org/2000/svg" width="190" height="40" viewBox="0 0 190 40"><path d="M20 3 6 8v10c0 9 6 16 14 19 8-3 14-10 14-19V8z" fill="#14B8A6"/><path d="M14 20l5 5 8-9" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><text x="44" y="27" font-family="Arial" font-weight="800" font-size="20" fill="#0B2A2E">DocImmune</text></svg>', size="large")
+pg = st.navigation([P_HOME, P_VERIFY, P_CASES, P_HELP], position="top")
+with st.container(key="mobnav"):  # shown only on phones, where the top menu is hidden
+    mc = st.columns(4)
+    for col, (pg_, lab, ic) in zip(mc, [(P_HOME, "Home", ":material/dashboard:"), (P_VERIFY, "Verify", ":material/verified_user:"), (P_CASES, "Cases", ":material/folder_open:"), (P_HELP, "Help", ":material/help:")]):
+        col.page_link(pg_, label=lab, icon=ic)
 pg.run()
